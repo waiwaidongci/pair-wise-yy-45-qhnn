@@ -1,13 +1,18 @@
-import { Box, Button, Chip, LinearProgress, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from '@mui/material'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '../app/hooks'
+import MergeOutlinedIcon from '@mui/icons-material/MergeOutlined'
 
 export default function OverviewPage() {
   const samples = useAppSelector((state) => state.development.samples)
+  const branches = useAppSelector((state) => state.development.branches)
+  const pendingChanges = useAppSelector((state) => state.development.pendingChanges)
+  const online = useAppSelector((state) => state.development.online)
   const navigate = useNavigate()
   const pendingProposals = samples.reduce((sum, item) => sum + item.proposals.filter((proposal) => proposal.status === '待决定').length, 0)
   const pendingAnnotations = samples.reduce((sum, item) => sum + item.annotations.filter((annotation) => annotation.status === '待处理').length, 0)
+  const pendingBranches = branches.filter((branch) => branch.status === '待处理').length
   const averagePass = Math.round(
     (samples.reduce((sum, sample) => {
       const measurements = sample.measurements['第三轮']
@@ -29,12 +34,25 @@ export default function OverviewPage() {
         <Button variant="contained" onClick={() => navigate('/review')}>进入样衣评审</Button>
       </Box>
 
+      {(!online || pendingBranches > 0 || pendingChanges.length > 0) && (
+        <Alert
+          severity={!online ? 'warning' : 'info'}
+          icon={<MergeOutlinedIcon />}
+          action={<Button color="inherit" size="small" onClick={() => navigate('/history')}>前往合并中心</Button>}
+          sx={{ mb: 1.5 }}
+        >
+          {!online
+            ? `离线模式：${pendingChanges.length} 项改动正以提交人 + 基准版本暂存，恢复网络后自动走字段合并。`
+            : `${pendingBranches} 个待处理分支需要指派责任人处理冲突，另有 ${pendingChanges.length} 项改动待同步合并。`}
+        </Alert>
+      )}
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4,1fr)' }, gap: 1.5, mb: 2 }}>
         {[
           ['在开发款式', samples.length, '2 家供应商协同'],
           ['尺寸达标率', `${averagePass}%`, '第三轮综合结果'],
           ['待决定改版', pendingProposals, '需负责人采纳'],
-          ['未关闭批注', pendingAnnotations, '包含尺寸与工艺'],
+          ['待处理分支', pendingBranches, pendingChanges.length ? `另 ${pendingChanges.length} 项离线暂存` : '同步失败/冲突留痕'],
         ].map(([label, value, hint]) => (
           <Box className="panel" key={String(label)} sx={{ p: 2 }}>
             <Typography color="#756f69" fontSize={12}>{label}</Typography>

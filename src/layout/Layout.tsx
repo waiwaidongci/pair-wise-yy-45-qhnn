@@ -20,6 +20,9 @@ import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
 import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import CloudDoneOutlinedIcon from '@mui/icons-material/CloudDoneOutlined'
+import CloudOffOutlinedIcon from '@mui/icons-material/CloudOffOutlined'
+import PendingActionsOutlinedIcon from '@mui/icons-material/PendingActionsOutlined'
+import { useAppSelector } from '../app/hooks'
 
 const nav = [
   { to: '/', label: '开发总览', icon: <DashboardOutlinedIcon /> },
@@ -30,6 +33,10 @@ const nav = [
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const online = useAppSelector((state) => state.development.online)
+  const currentUser = useAppSelector((state) => state.development.currentUser)
+  const pendingChanges = useAppSelector((state) => state.development.pendingChanges.length)
+  const pendingBranches = useAppSelector((state) => state.development.branches.filter((branch) => branch.status === '待处理').length)
   const drawer = (
     <Box sx={{ width: 242, minHeight: '100%', bgcolor: '#262a2b', color: '#eef1ef' }}>
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.2, borderBottom: '1px solid rgba(255,255,255,.1)' }}>
@@ -63,10 +70,20 @@ export default function Layout() {
       </List>
       <Box sx={{ mx: 1.5, mt: 'auto', p: 1.5, border: '1px solid rgba(255,255,255,.1)', borderRadius: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
-          <CloudDoneOutlinedIcon sx={{ fontSize: 16, color: '#74b79d' }} />
-          <Typography fontSize={11}>草稿已实时保存</Typography>
+          {online ? <CloudDoneOutlinedIcon sx={{ fontSize: 16, color: '#74b79d' }} /> : <CloudOffOutlinedIcon sx={{ fontSize: 16, color: '#e0a25e' }} />}
+          <Typography fontSize={11}>{online ? '在线 · 改动走版本合并' : '离线 · 改动本地暂存'}</Typography>
         </Box>
-        <Typography color="#8f9a98" fontSize={10} mt={0.8}>最后同步 16:42 · 3 位协作者</Typography>
+        <Typography color="#8f9a98" fontSize={10} mt={0.8}>
+          {currentUser}
+          <br />
+          {pendingChanges} 项待同步 · {pendingBranches} 个待处理分支
+        </Typography>
+        {pendingBranches > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.8, color: '#e0a25e' }}>
+            <PendingActionsOutlinedIcon sx={{ fontSize: 13 }} />
+            <Typography fontSize={10}>分支持久保存，重开页面仍在</Typography>
+          </Box>
+        )}
       </Box>
     </Box>
   )
