@@ -12,6 +12,7 @@ const measurements = (offset = 0) => [
 export const seedSamples: Sample[] = [
   {
     id: 'SMP-26018',
+    version: 1,
     styleCode: 'WR-26AW-018',
     styleName: '海盐弧线工装外套',
     category: '女装 / 外套',
@@ -48,6 +49,7 @@ export const seedSamples: Sample[] = [
   },
   {
     id: 'SMP-26021',
+    version: 1,
     styleCode: 'WR-26AW-021',
     styleName: '岩灰轻量风衣',
     category: '女装 / 风衣',

@@ -1,8 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { samplingApi } from './api'
-import { developmentReducer } from '../features/developmentSlice'
-
-const persistedKey = 'garment-sampling-draft-v1'
+import { developmentReducer, persistKey } from '../features/developmentSlice'
 
 export const store = configureStore({
   reducer: {
@@ -13,8 +11,7 @@ export const store = configureStore({
 })
 
 store.subscribe(() => {
-  const state = store.getState().development
-  localStorage.setItem(persistedKey, JSON.stringify(state))
+  localStorage.setItem(persistKey, JSON.stringify(store.getState().development))
 })
 
 export type RootState = ReturnType<typeof store.getState>

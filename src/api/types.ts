@@ -27,6 +27,7 @@ export type RevisionProposal = {
 
 export type Sample = {
   id: string
+  version: number
   styleCode: string
   styleName: string
   category: string

@@ -27,14 +27,17 @@ import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined'
 import AddLocationAltOutlinedIcon from '@mui/icons-material/AddLocationAltOutlined'
 import PhotoCameraBackOutlinedIcon from '@mui/icons-material/PhotoCameraBackOutlined'
 import { useAppDispatch, useAppSelector } from '../app/hooks'
-import { decideProposal, saveDraft, setRounds, toggleAnnotation } from '../features/developmentSlice'
+import { commitEdit, decideProposal, saveDraft, selectViewSample, setRounds, toggleAnnotation } from '../features/developmentSlice'
+import BranchAlert from '../components/BranchAlert'
 
 const rounds = ['第一轮', '第二轮', '第三轮'] as const
 
 export default function SampleReviewPage() {
   const dispatch = useAppDispatch()
   const state = useAppSelector((root) => root.development)
-  const sample = state.samples.find((item) => item.id === state.selectedId) ?? state.samples[0]
+  const sample = useAppSelector((root) => selectViewSample(root.development, root.development.selectedId))
+  const currentUser = useAppSelector((root) => root.development.currentUser)
+  const locked = sample.status === '已锁定'
   const [annotationOpen, setAnnotationOpen] = useState(false)
   const [decisionDialog, setDecisionDialog] = useState<string | null>(null)
   const [decisionReason, setDecisionReason] = useState('')
@@ -54,7 +57,7 @@ export default function SampleReviewPage() {
   }, [sample, state.roundA, state.roundB])
 
   const handleImageClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (state.locked) return
+    if (locked) return
     const rect = imageRef.current?.getBoundingClientRect()
     if (!rect) return
     setAnnotationDraft((current) => ({
@@ -72,22 +75,54 @@ export default function SampleReviewPage() {
     setDecisionReason('')
   }
 
+  const submitAnnotation = () => {
+    const newId = `AN-${Date.now()}`
+    dispatch(
+      commitEdit({
+        sampleId: sample.id,
+        summary: `新增批注「${annotationDraft.part}」`,
+        changeset: {
+          [`annotations.${newId}.x`]: annotationDraft.x,
+          [`annotations.${newId}.y`]: annotationDraft.y,
+          [`annotations.${newId}.part`]: annotationDraft.part,
+          [`annotations.${newId}.content`]: annotationDraft.content,
+          [`annotations.${newId}.author`]: `${currentUser.name} / ${currentUser.role}`,
+          [`annotations.${newId}.status`]: '待处理',
+        },
+      }),
+    )
+    setAnnotationDraft({ x: 50, y: 42, part: '版型', content: '' })
+    setAnnotationOpen(false)
+  }
+
+  const commitActual = (round: string, key: string, value: number) => {
+    if (Number.isNaN(value)) return
+    dispatch(
+      commitEdit({
+        sampleId: sample.id,
+        summary: `调整${round}·${key}实测`,
+        changeset: { [`measurements.${round}.${key}.actual`]: value },
+      }),
+    )
+  }
+
   return (
     <Box className="page">
       <Box className="page-head">
         <Box>
           <Typography className="eyebrow">SAMPLE REVIEW / 样品评审</Typography>
           <Typography component="h1" fontWeight={800}>{sample.styleCode} · 轮次对比</Typography>
-          <Typography color="text.secondary">尺寸差异超过容差自动高亮；图片批注与修改方案绑定到具体轮次。</Typography>
+          <Typography color="text.secondary">尺寸差异超容差自动高亮；批注与方案带提交人，离线改动按字段合并。</Typography>
         </Box>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" startIcon={<PhotoCameraBackOutlinedIcon />}>上传样衣照片</Button>
-          <Button variant="contained" disabled={state.locked} onClick={() => dispatch(saveDraft({ sampleId: sample.id, notes: '评审草稿已保存' }))}>保存当前草稿</Button>
+          <Button variant="contained" disabled={locked} onClick={() => dispatch(saveDraft({ sampleId: sample.id, notes: '评审草稿已保存' }))}>保存当前草稿</Button>
         </Stack>
       </Box>
 
-      {state.locked && <Alert severity="success" sx={{ mb: 1.5 }}>该轮次已审核锁定。解锁后才能新增批注或采纳方案。</Alert>}
-      {sample.annotations.some((item) => item.status === '待处理') && (
+      <BranchAlert sampleId={sample.id} />
+      {locked && <Alert severity="success" sx={{ mb: 1.5 }}>该轮次已审核锁定，只能查看历史。解锁后新增批注或采纳方案将进入新的合并周期。</Alert>}
+      {!locked && sample.annotations.some((item) => item.status === '待处理') && (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
           当前仍有 {sample.annotations.filter((item) => item.status === '待处理').length} 项待处理批注，审核锁定前必须逐项关闭。
         </Alert>
@@ -132,7 +167,19 @@ export default function SampleReviewPage() {
                     <TableCell>{item.spec} cm</TableCell>
                     <TableCell>±{item.tolerance}</TableCell>
                     <TableCell>{item.previous.toFixed(1)}</TableCell>
-                    <TableCell sx={{ fontWeight: 800, color: item.inTolerance ? '#2d7665' : '#b44b2d' }}>{item.current.toFixed(1)}</TableCell>
+                    <TableCell sx={{ fontWeight: 800, color: item.inTolerance ? '#2d7665' : '#b44b2d' }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        defaultValue={item.current}
+                        disabled={locked}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (v !== item.current) commitActual(state.roundB, item.key, v)
+                        }}
+                        sx={{ width: 78, '& .MuiInputBase-input': { fontSize: 13, py: 0.3, fontWeight: 800, color: 'inherit' } }}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Chip size="small" label={`${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}`} color={Math.abs(item.delta) > 0.5 ? 'warning' : 'default'} />
                     </TableCell>
@@ -150,7 +197,7 @@ export default function SampleReviewPage() {
               minRows={2}
               fullWidth
               size="small"
-              label="轮次评审草稿"
+              label="轮次评审草稿（仅本地，不参与协同合并）"
               defaultValue={state.draftNotes[sample.id] ?? '第二轮肩袖活动量已改善；建议采纳肩线内收方案，第三轮复核举臂舒适度。'}
               onBlur={(event) => dispatch(saveDraft({ sampleId: sample.id, notes: event.target.value }))}
             />
@@ -160,7 +207,7 @@ export default function SampleReviewPage() {
         <Box className="panel">
           <Box sx={{ px: 1.8, py: 1.4, borderBottom: '1px solid #ece9e4', display: 'flex', justifyContent: 'space-between' }}>
             <Typography fontWeight={800}>样衣部位批注 · {state.roundB}</Typography>
-            <Button size="small" startIcon={<AddLocationAltOutlinedIcon />} disabled={state.locked} onClick={() => setAnnotationOpen(true)}>添加批注</Button>
+            <Button size="small" startIcon={<AddLocationAltOutlinedIcon />} disabled={locked} onClick={() => setAnnotationOpen(true)}>添加批注</Button>
           </Box>
           <Box
             ref={imageRef}
@@ -170,7 +217,7 @@ export default function SampleReviewPage() {
               height: 420,
               m: 1.5,
               overflow: 'hidden',
-              cursor: state.locked ? 'default' : 'crosshair',
+              cursor: locked ? 'default' : 'crosshair',
               borderRadius: 1.5,
               background: 'linear-gradient(180deg,#dfe5e4 0%,#cbd4d1 100%)',
               backgroundImage: 'linear-gradient(180deg,#dce4e2 0%,#c7d2cf 100%), repeating-linear-gradient(90deg,transparent 0 39px,rgba(255,255,255,.18) 40px)',
@@ -245,7 +292,7 @@ export default function SampleReviewPage() {
               <Typography fontSize={13} mt={1}>{proposal.content}</Typography>
               <Typography color="text.secondary" fontSize={11} mt={0.7}>提交人：{proposal.author}</Typography>
               {proposal.status === '待决定' && (
-                <Button size="small" variant="outlined" sx={{ mt: 1.2 }} onClick={() => setDecisionDialog(proposal.id)} disabled={state.locked}>
+                <Button size="small" variant="outlined" sx={{ mt: 1.2 }} onClick={() => setDecisionDialog(proposal.id)} disabled={locked}>
                   作出决定
                 </Button>
               )}
@@ -260,7 +307,7 @@ export default function SampleReviewPage() {
           <Stack spacing={1.5} pt={1}>
             <TextField label="详细部位" value={annotationDraft.part} onChange={(event) => setAnnotationDraft({ ...annotationDraft, part: event.target.value })} />
             <TextField multiline minRows={3} label="批注内容" value={annotationDraft.content} onChange={(event) => setAnnotationDraft({ ...annotationDraft, content: event.target.value })} />
-            <Typography color="text.secondary" fontSize={12}>批注锚点：{annotationDraft.x}% / {annotationDraft.y}% · 轮次 {state.roundB}</Typography>
+            <Typography color="text.secondary" fontSize={12}>批注锚点：{annotationDraft.x}% / {annotationDraft.y}% · 轮次 {state.roundB} · 提交人 {currentUser.name}</Typography>
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -268,11 +315,7 @@ export default function SampleReviewPage() {
           <Button
             variant="contained"
             disabled={!annotationDraft.part.trim() || !annotationDraft.content.trim()}
-            onClick={() => {
-              sample.annotations.push({ id: `AN-${Date.now()}`, author: '当前用户', status: '待处理', ...annotationDraft })
-              setAnnotationDraft({ x: 50, y: 42, part: '版型', content: '' })
-              setAnnotationOpen(false)
-            }}
+            onClick={submitAnnotation}
           >
             添加并标记待处理
           </Button>

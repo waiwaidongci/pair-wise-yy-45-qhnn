@@ -1,13 +1,68 @@
+import { useState } from 'react'
 import { Box, Button, Chip, Divider, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import { useAppDispatch, useAppSelector } from '../app/hooks'
-import { selectSample } from '../features/developmentSlice'
+import { commitEdit, selectSample, selectViewSample } from '../features/developmentSlice'
+import BranchAlert from '../components/BranchAlert'
+
+function EditableField({
+  label,
+  value,
+  onCommit,
+  disabled,
+}: {
+  label: string
+  value: string
+  onCommit: (v: string) => void
+  disabled?: boolean
+}) {
+  const [draft, setDraft] = useState(value)
+  const [editing, setEditing] = useState(false)
+  if (!editing) {
+    return (
+      <>
+        <Typography color="text.secondary">{label}</Typography>
+        <Typography
+          onClick={() => !disabled && setEditing(true)}
+          sx={{ cursor: disabled ? 'default' : 'text', borderBottom: '1px dashed transparent', '&:hover': { borderBottomColor: '#b9c4c1' } }}
+        >
+          {value}
+        </Typography>
+      </>
+    )
+  }
+  return (
+    <>
+      <Typography color="text.secondary">{label}</Typography>
+      <TextField
+        size="small"
+        autoFocus
+        defaultValue={value}
+        disabled={disabled}
+        onBlur={(e) => {
+          setEditing(false)
+          if (e.target.value.trim() && e.target.value !== value) onCommit(e.target.value.trim())
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        sx={{ '& .MuiInputBase-input': { fontSize: 13, py: 0.4 } }}
+      />
+    </>
+  )
+}
 
 export default function StylesPage() {
   const dispatch = useAppDispatch()
   const { samples, selectedId } = useAppSelector((state) => state.development)
-  const selected = samples.find((item) => item.id === selectedId) ?? samples[0]
+  const selected = useAppSelector((root) => selectViewSample(root.development, root.development.selectedId))
+  const locked = selected.status === '已锁定'
+
+  const commitField = (field: string, label: string, value: string) => {
+    dispatch(commitEdit({ sampleId: selected.id, changeset: { [field]: value }, summary: `修改${label}` }))
+  }
 
   return (
     <Box className="page">
@@ -15,10 +70,12 @@ export default function StylesPage() {
         <Box>
           <Typography className="eyebrow">STYLE FILES / 款式档案</Typography>
           <Typography component="h1" fontWeight={800}>规格、物料与样品轮次</Typography>
-          <Typography color="text.secondary">款式档案是批注、尺寸修订和审核记录的单一来源。</Typography>
+          <Typography color="text.secondary">每次修改带提交人与基准版本，离线改动回来按字段自动合并，冲突留两份。</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddPhotoAlternateOutlinedIcon />}>新建款式档案</Button>
       </Box>
+
+      <BranchAlert sampleId={selected.id} />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '260px minmax(0,1fr)' }, gap: 1.5 }}>
         <Box className="panel" sx={{ overflow: 'hidden' }}>
@@ -57,7 +114,10 @@ export default function StylesPage() {
         <Box className="panel">
           <Box sx={{ p: 2, borderBottom: '1px solid #ece9e4', display: 'flex', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
             <Box>
-              <Typography color="text.secondary" fontSize={11}>{selected.id} · {selected.developmentSeason}</Typography>
+              <Stack direction="row" spacing={0.8} alignItems="center">
+                <Typography color="text.secondary" fontSize={11}>{selected.id} · {selected.developmentSeason}</Typography>
+                <Chip size="small" variant="outlined" label={`v${selected.version}`} sx={{ height: 18, fontSize: 10 }} />
+              </Stack>
               <Typography fontSize={22} fontWeight={850} mt={0.5}>{selected.styleName}</Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -67,13 +127,13 @@ export default function StylesPage() {
           </Box>
           <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
             <Box>
-              <Typography fontWeight={800} mb={1}>开发信息</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 1, fontSize: 13 }}>
-                <Typography color="text.secondary">供应商</Typography><Typography>{selected.supplier}</Typography>
-                <Typography color="text.secondary">负责人</Typography><Typography>{selected.owner}</Typography>
-                <Typography color="text.secondary">面辅料</Typography><Typography>{selected.fabric}</Typography>
-                <Typography color="text.secondary">色卡</Typography><Typography>{selected.colorway}</Typography>
-                <Typography color="text.secondary">计划交样</Typography><Typography>{selected.dueDate}</Typography>
+              <Typography fontWeight={800} mb={1}>开发信息{locked ? '（审核锁定，只读）' : '（点击可改，离线自动合并）'}</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 1, fontSize: 13, alignItems: 'center' }}>
+                <EditableField label="供应商" value={selected.supplier} disabled={locked} onCommit={(v) => commitField('supplier', '供应商', v)} />
+                <EditableField label="负责人" value={selected.owner} disabled={locked} onCommit={(v) => commitField('owner', '负责人', v)} />
+                <EditableField label="面辅料" value={selected.fabric} disabled={locked} onCommit={(v) => commitField('fabric', '面辅料', v)} />
+                <EditableField label="色卡" value={selected.colorway} disabled={locked} onCommit={(v) => commitField('colorway', '色卡', v)} />
+                <EditableField label="计划交样" value={selected.dueDate} disabled={locked} onCommit={(v) => commitField('dueDate', '计划交样', v)} />
               </Box>
             </Box>
             <Box>
